@@ -1,11 +1,12 @@
+.. _sw_config_properties:
+
 Sparkling Water Configuration Properties
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+----------------------------------------
 
-The following configuration properties can be passed to Spark to
-configure Sparking Water
+The following configuration properties can be passed to Spark to configure Sparking Water.
 
-Configuration properties independent on selected backend
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Configuration properties independent of selected backend
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 +----------------------------------------------------+----------------+----------------------------------------+
 | Property name                                      | Default value  | Description                            |
@@ -134,7 +135,7 @@ Configuration properties independent on selected backend
 --------------
 
 Internal backend configuration properties
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 +----------------------------------------------------+----------------+----------------------------------------+
 | Property name                                      | Default value  | Description                            |
@@ -194,7 +195,7 @@ Internal backend configuration properties
 --------------
 
 External backend configuration properties
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 +-------------------------------------------------------+----------------+-------------------------------------+
 | Property name                                         | Default value  | Description                         |
