@@ -23,16 +23,15 @@ publishing {
 modifyPom {
     project {
       name project.name
+      packaging 'pom'
       // Basic info
       url 'https://github.com/h2oai/sparkling-water'
       inceptionYear '2013'
       description project.description
-
       organization {
         name = 'H2O.ai'
         url  = 'http://h2o.ai/'
       }
-
       // H2O licensing
       licenses {
         license {
