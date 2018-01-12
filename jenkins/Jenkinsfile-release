@@ -3,7 +3,8 @@ pipeline {
     
     parameters {
         booleanParam(name: 'prepareReleaseNotes', defaultValue: true, description: 'Prepare release notes')
-        booleanParam(name: 'releaseAndPublishToNexus', defaultValue: true, description: 'Release and publish to Nexus')
+        booleanParam(name: 'publishToNexus', defaultValue: true, description: 'Publish to Nexus')
+        booleanParam(name: 'releaseOnGithub', defaultValue: true, description: 'Release on Github')
         booleanParam(name: 'publishToS3', defaultValue: true, description: 'Publish to S3')
         booleanParam(name: 'publishToPiPy', defaultValue: true, description: 'Publish to PiPy')
     }
@@ -95,58 +96,78 @@ pipeline {
         }
 
         stage('Build Sparkling Water'){
+            steps {
+                sh  """
+                        # Calculate the current and future version
+                        sed -i.backup -E "s/\\.[0-9]+-SNAPSHOT/.\$(( $BUILD_NUMBER - 1 ))/" gradle.properties
+                        REL_VERSION=`cat gradle.properties | grep version | grep -v '#' | sed -e "s/.*=//"`
+                        NEW_VERSION=`echo "\$REL_VERSION" | sed -E "s/\\.[0-9]+\$/.$BUILD_NUMBER-SNAPSHOT/"`
+                                             
+                        echo
+                        echo "RELEASE VERSION: \${REL_VERSION}"
+                        echo "NEW VERSION: \${NEW_VERSION}"
+                        echo
+                        
+                        # Fetch H2O python package
+                        mkdir -p private/
+                        curl \$(./gradlew -q printH2OWheelPackage ) > private/h2o.whl
+                        export H2O_PYTHON_WHEEL="\$(pwd)/private/h2o.whl"
+                        
+                        # Perform a build
+                        ./gradlew build -x check
+                        ./gradlew buildSparklingWaterDist
+                    """
+            }
+        }
+
+        stage('Publish to Nexus'){
             when {
-                expression { params.releaseAndPublishToNexus == true }
+                expression { params.publishToNexus == true }
             }
             steps {
                 withCredentials([usernamePassword(credentialsId: "PUBLIC_NEXUS", usernameVariable: 'NEXUS_USERNAME', passwordVariable: 'NEXUS_PASSWORD'),
                                  usernamePassword(credentialsId: "SIGNING_KEY", usernameVariable: 'SIGN_KEY', passwordVariable: 'SIGN_PASSWORD'),
                                  file(credentialsId: 'release-secret-key-ring-file', variable: 'RING_FILE_PATH')]) {
                     sh """
-
-                            # Calculate the current and future version
-                            sed -i.backup -E "s/\\.[0-9]+-SNAPSHOT/.\$(( $BUILD_NUMBER - 1 ))/" gradle.properties
-                            REL_VERSION=`cat gradle.properties | grep version | grep -v '#' | sed -e "s/.*=//"`
-                            NEXT_BUILD_NUMBER=\$(( $BUILD_NUMBER ))
-                            NEW_VERSION=`echo "\$REL_VERSION" | sed -E "s/\\.[0-9]+\$/.\${NEXT_BUILD_NUMBER}-SNAPSHOT/"`
-                                                 
-                            echo
-                            echo "RELEASE VERSION: \${REL_VERSION}"
-                            echo "NEW VERSION: \${NEW_VERSION}"
-                            echo
-                            
-                            # Fetch H2O python package
-                            mkdir -p private/
-                            curl \$(./gradlew -q printH2OWheelPackage ) > private/h2o.whl
-                            export H2O_PYTHON_WHEEL="\$(pwd)/private/h2o.whl"
-                            
-                            # Perform a build
-                            ./gradlew build -x check
-                            ./gradlew buildSparklingWaterDist
-                            
-                            ./gradlew -Porg.gradle.daemon=false -Porg.gradle.daemon.performance.enable-monitoring=false -PnexusUsername=${NEXUS_USERNAME} -PnexusPassword=${NEXUS_PASSWORD} -Psigning.keyId=${SIGN_KEY} -Psigning.secretKeyRingFile=${RING_FILE_PATH} -Prelease.useAutomaticVersion=true -Prelease.releaseVersion=\$REL_VERSION} -Prelease.newVersion=\${NEW_VERSION} -Psigning.password= -PdoRelease release -x check
-                            # Note: 
-                            # After this step, gradle.properties has the new future version ending with "-SNAPSHOT" so
-                            # we change it back to the version of the current release in case the following stages
-                            # require to use the correct version
-                              
-                            sed -i.backup -E "s/\\.[0-9]+-SNAPSHOT/.\$(( $BUILD_NUMBER - 1 ))/" gradle.properties
+                            # Publish to NEXUS
+                            ./gradlew -Porg.gradle.daemon=false -PnexusUsername=${NEXUS_USERNAME} -PnexusPassword=${NEXUS_PASSWORD} -Psigning.keyId=${SIGN_KEY} -Psigning.secretKeyRingFile=${RING_FILE_PATH} -Psigning.password= -PdoRelease publish -x check
                         """
                 }
             }
         }
 
+        stage('Release on Github'){
+            when {
+                expression { params.releaseOnGithub == true }
+            }
+            steps {
+                sh  """
+                    REL_VERSION=`cat gradle.properties | grep version | grep -v '#' | sed -e "s/.*=//"`
+                    NEW_VERSION=`echo "\$REL_VERSION" | sed -E "s/\\.[0-9]+\$/.$BUILD_NUMBER-SNAPSHOT/"`
+                         
+                    # Create Release tag on Github
+                    ./gradlew -Porg.gradle.daemon=false -Prelease.useAutomaticVersion=true -Prelease.releaseVersion=\${REL_VERSION} -Prelease.newVersion=\${NEW_VERSION} -PdoRelease release -x check
+                    # Note: 
+                    # After this step, gradle.properties has the new future version ending with "-SNAPSHOT" so
+                    # we change it back to the version of the current release in case the following stages
+                    # require to use the correct version
+                      
+                    sed -i.backup -E "s/\\.[0-9]+-SNAPSHOT/.\$(( $BUILD_NUMBER - 1 ))/" gradle.properties
+                    """
+            }
+        }
+
         stage('Create Extended H2O Jars'){
             steps {
-                sh """
-                        # Create extended H2O jar for all supported hadoop distributions
-                        HADOOP_DISTRIBUTIONS=`./gradlew -q :sparkling-water-assembly-h2o:printHadoopDistributions)`
-                        for distro in \${HADOOP_DISTRIBUTIONS}
-                        do
-                          ./gradlew extendJar -PdownloadH2O="\${distro}"
-                        done
-                        # Create extended H2O jar also for the regular h2o (no H2O driver)
-                        ./gradlew extendJar -PdownloadH2O
+                sh  """
+                    # Create extended H2O jar for all supported hadoop distributions
+                    HADOOP_DISTRIBUTIONS=`./gradlew -q :sparkling-water-assembly-h2o:printHadoopDistributions)`
+                    for distro in \${HADOOP_DISTRIBUTIONS}
+                    do
+                      ./gradlew extendJar -PdownloadH2O="\${distro}"
+                    done
+                    # Create extended H2O jar also for the regular h2o (no H2O driver)
+                    ./gradlew extendJar -PdownloadH2O
                     """
             }
         }
@@ -157,50 +178,50 @@ pipeline {
             }
             steps {
                 sh  """
-                            s3cmd --rexclude='target/classes/*' --acl-public sync dist/build/ s3://h2o-release/sparkling-water/${BRANCH_NAME}/\$(( $BUILD_NUMBER - 1 ))/
-                            
-                            echo EXPLICITLY SET MIME TYPES AS NEEDED
-                            list_of_html_files=`find dist/build -name '*.html' | sed 's/dist\\/build\\///g'`
-                            echo \${list_of_html_files}
-                            for f in \${list_of_html_files}
-                            do
-                                s3cmd --acl-public --mime-type text/html put dist/build/\${f} s3://h2o-release/sparkling-water/${BRANCH_NAME}/\$(( $BUILD_NUMBER - 1 ))/\${f}
-                            done
-                            
-                            list_of_js_files=`find dist/build -name '*.js' | sed 's/dist\\/build\\///g'`
-                            echo \${list_of_js_files}
-                            for f in \${list_of_js_files}
-                            do
-                                s3cmd --acl-public --mime-type text/javascript put dist/build/\${f} s3://h2o-release/sparkling-water/${BRANCH_NAME}/\$(( $BUILD_NUMBER - 1 ))/\${f}
-                            done
-                            
-                            list_of_css_files=`find dist/build -name '*.css' | sed 's/dist\\/build\\///g'`
-                            echo \${list_of_css_files}
-                            for f in \${list_of_css_files}
-                            do
-                                s3cmd --acl-public --mime-type text/css put dist/build/\${f} s3://h2o-release/sparkling-water/${BRANCH_NAME}/\$(( $BUILD_NUMBER - 1 ))/\${f}
-                            done
-                            
-                            list_of_extended_jars=`find assembly-h2o/private -name '*-extended.jar' | sed 's/assembly-h2o\\\\/private\\\\///g'`
-                            echo \${list_of_extended_jars}
-                            for jar in \${list_of_extended_jars}
-                            do
-                                 s3cmd --acl-public put assembly-h2o/private/\${jar} s3://h2o-release/sparkling-water/${BRANCH_NAME}/\$(( $BUILD_NUMBER - 1 ))/\${jar}
-                            done
-                            ./gradlew :sparkling-water-assembly-h2o:clean
-                            ./gradlew :sparkling-water-assembly-h2o:cleanH2OJars
-                            
-                            echo UPDATE LATEST POINTER
-                            tmpdir=./buildsparklingwater.tmp
-                            mkdir -p \${tmpdir}
-                            echo \$(( $BUILD_NUMBER - 1 )) > \${tmpdir}/latest
-                            echo "<head>" > \${tmpdir}/latest.html
-                            echo "<meta http-equiv=\\"refresh\\" content=\\"0; url=\$(( $BUILD_NUMBER - 1 ))/index.html\\" />" >> \${tmpdir}/latest.html
-                            echo "</head>" >> \${tmpdir}/latest.html
-                            s3cmd --acl-public put \${tmpdir}/latest s3://h2o-release/sparkling-water/${BRANCH_NAME}/latest
-                            s3cmd --acl-public put \${tmpdir}/latest.html s3://h2o-release/sparkling-water/${BRANCH_NAME}/latest.html
-                            s3cmd --acl-public put \${tmpdir}/latest.html s3://h2o-release/sparkling-water/${BRANCH_NAME}/index.html
-                        """
+                    s3cmd --rexclude='target/classes/*' --acl-public sync dist/build/ s3://h2o-release/sparkling-water/${BRANCH_NAME}/\$(( $BUILD_NUMBER - 1 ))/
+                    
+                    echo EXPLICITLY SET MIME TYPES AS NEEDED
+                    list_of_html_files=`find dist/build -name '*.html' | sed 's/dist\\/build\\///g'`
+                    echo \${list_of_html_files}
+                    for f in \${list_of_html_files}
+                    do
+                        s3cmd --acl-public --mime-type text/html put dist/build/\${f} s3://h2o-release/sparkling-water/${BRANCH_NAME}/\$(( $BUILD_NUMBER - 1 ))/\${f}
+                    done
+                    
+                    list_of_js_files=`find dist/build -name '*.js' | sed 's/dist\\/build\\///g'`
+                    echo \${list_of_js_files}
+                    for f in \${list_of_js_files}
+                    do
+                        s3cmd --acl-public --mime-type text/javascript put dist/build/\${f} s3://h2o-release/sparkling-water/${BRANCH_NAME}/\$(( $BUILD_NUMBER - 1 ))/\${f}
+                    done
+                    
+                    list_of_css_files=`find dist/build -name '*.css' | sed 's/dist\\/build\\///g'`
+                    echo \${list_of_css_files}
+                    for f in \${list_of_css_files}
+                    do
+                        s3cmd --acl-public --mime-type text/css put dist/build/\${f} s3://h2o-release/sparkling-water/${BRANCH_NAME}/\$(( $BUILD_NUMBER - 1 ))/\${f}
+                    done
+                    
+                    list_of_extended_jars=`find assembly-h2o/private -name '*-extended.jar' | sed 's/assembly-h2o\\\\/private\\\\///g'`
+                    echo \${list_of_extended_jars}
+                    for jar in \${list_of_extended_jars}
+                    do
+                         s3cmd --acl-public put assembly-h2o/private/\${jar} s3://h2o-release/sparkling-water/${BRANCH_NAME}/\$(( $BUILD_NUMBER - 1 ))/\${jar}
+                    done
+                    ./gradlew :sparkling-water-assembly-h2o:clean
+                    ./gradlew :sparkling-water-assembly-h2o:cleanH2OJars
+                    
+                    echo UPDATE LATEST POINTER
+                    tmpdir=./buildsparklingwater.tmp
+                    mkdir -p \${tmpdir}
+                    echo \$(( $BUILD_NUMBER - 1 )) > \${tmpdir}/latest
+                    echo "<head>" > \${tmpdir}/latest.html
+                    echo "<meta http-equiv=\\"refresh\\" content=\\"0; url=\$(( $BUILD_NUMBER - 1 ))/index.html\\" />" >> \${tmpdir}/latest.html
+                    echo "</head>" >> \${tmpdir}/latest.html
+                    s3cmd --acl-public put \${tmpdir}/latest s3://h2o-release/sparkling-water/${BRANCH_NAME}/latest
+                    s3cmd --acl-public put \${tmpdir}/latest.html s3://h2o-release/sparkling-water/${BRANCH_NAME}/latest.html
+                    s3cmd --acl-public put \${tmpdir}/latest.html s3://h2o-release/sparkling-water/${BRANCH_NAME}/index.html
+                    """
             }
         }
 
