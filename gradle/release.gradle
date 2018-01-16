@@ -1,5 +1,4 @@
 apply plugin: 'net.researchgate.release'
-apply plugin: 'nexus-workflow'
 
 release {
   tagTemplate = 'RELEASE-$version'
