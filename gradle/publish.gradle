@@ -9,17 +9,24 @@ task mappings {
     }
   }
 }
-// for publishing to maven local
+
+
+// For publishing to maven local
 apply plugin: 'maven-publish'
 publishing {
   publications {
     mavenJava(MavenPublication) {
       from components.java
+
+      pom.withXml {
+        asNode().appendNode('packaging', 'pom')
+      }
     }
   }
 }
 
 
+// This is for updating POM generated for Nexus/Maven
 modifyPom {
     project {
       name project.name
