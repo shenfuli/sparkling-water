@@ -2,10 +2,10 @@ pipeline {
     agent {label 'master'}
     
     parameters {
-        booleanParam(name: 'prepareReleaseNotes', defaultValue: true, description: 'Prepare release notes')
+        booleanParam(name: 'prepareReleaseNotes', defaultValue: false, description: 'Prepare release notes')
         booleanParam(name: 'releaseAndPublishToNexus', defaultValue: true, description: 'Release and publish to Nexus')
-        booleanParam(name: 'publishToS3', defaultValue: true, description: 'Publish to S3')
-        booleanParam(name: 'publishToPiPy', defaultValue: true, description: 'Publish to PiPy')
+        booleanParam(name: 'publishToS3', defaultValue: false, description: 'Publish to S3')
+        booleanParam(name: 'publishToPiPy', defaultValue: false, description: 'Publish to PiPy')
     }
 
     environment {
