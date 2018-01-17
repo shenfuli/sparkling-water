@@ -8,9 +8,10 @@ The tests are performed for both Sparkling Water backend types (internal and ext
 Testing Environments
 ~~~~~~~~~~~~~~~~~~~~
 
--  Local: This corresponds to setting the Spark ``MASTER`` variable to one of ``local``, or ``local[*]``, or ``local-cluster[_,_,_]``.
--  Standalone Cluster: The ``MASTER`` variable points to an existing standalone Spark cluster ``spark://...``.
--  YARN Cluster: The ``MASTER`` variable contains ``yarn-client`` or ``yarn-cluster`` values.
+
+-  Local - corresponds to setting Spark ``MASTER`` variable to one of ``local``, or ``local[*]``, or ``local-cluster[_,_,_]`` (``local-cluster`` mode is just for testing purposes) values
+-  Standalone cluster - the ``MASTER`` variable points to existing standalone Spark cluster ``spark://...``
+-  YARN cluster - the ``MASTER`` variable contains ``yarn-client`` or ``yarn-cluster`` values
 
 --------------
 

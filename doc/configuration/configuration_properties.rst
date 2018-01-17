@@ -48,7 +48,8 @@ Configuration properties independent of selected backend
 | ``spark.ext.h2o.topology.change.listener.enabled`` | ``true``       | Decides whether listener which kills   |
 |                                                    |                | H2O cluster on the change of the       |
 |                                                    |                | underlying cluster's topology is       |
-|                                                    |                | enabled or not.                        |
+|                                                    |                | enabled or not. This configuration     |
+|                                                    |                | has effect only in non-local mode.     |
 +----------------------------------------------------+----------------+----------------------------------------+
 | ``spark.ext.h2o.spark.version.check.enabled``      | ``true``       | Enables check if run-time Spark        |
 |                                                    |                | version matches build time Spark       |
